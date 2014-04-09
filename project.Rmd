@@ -1,0 +1,292 @@
+STAT585X Project : HPI in US states and Major Cities
+========================================================
+# Jie Liu
+
+
+It is well noted that the US economy has been thriving these years since Financial Crisis in 2007-2008. From the time we have arrived at Ames, Iowa, the rental prices in housing have been soaring without cease while at the same time I found that our salaries were also raised. This makes me curious of how housing prices in each US state as well as US major cities change during these years and is there any difference for west coast, east coast and mid west? In my Project, I collect data such as House Price Index, US largest 25 cities, Per Capita Personal Income and Gross State Product data from different sources, clean and process data for further analysis and meanwhile develop a shiny app for visualization.
+
+```{r}
+setwd("E:/RdefaultWorkSpace/STAT585X-FinalProject")
+options(warn=-1)
+library(ggplot2)
+library(reshape2)
+require(dplyr)
+require(GGally)
+library(maps)
+library(scales)
+library(ggmap)
+require(lubridate)
+```
+
+
+```{r}
+#Import Two Datasets: US HPI and State HPI
+#Use Seasonally-Adjusted Purchase-Only Index for USA
+us<-read.csv("data/USAHPI.csv")
+colnames(us)[4:6]<-c("PurchaseOnlyIndex","change-Prev4Qt","change-PrevQtr")
+allstate<-read.csv("data/stateHPI.csv")
+colnames(allstate)[c(1:4)]<-c("Region","Year","Quarter","PurchaseOnlyIndex")
+print(paste("Unique Regions in the state Dataset:",length(unique(allstate$Region)),"states"))
+```
+
+
+A summary of House Price Index(Purchase Only Index) for the whole US shows that maximum of index is 225.2 and Median of the Index is 160.9. (Set 1991-Quarter1=100)
+```{r}
+#A summary of US POI(HPI)
+summary(us$PurchaseOnlyIndex)
+```
+
+
+Then, import US state and city data for further plotting. Note that there are no DC and USA entries in usmap data, while in allstate data, region for DC appears. We have to add these two into US map data. This is because the preliminary study shows that there is one outlier whose HPI index soars during the years, which is identified exactly as DC.
+```{r}
+#Import US state and cities Data and put DC and USA into an independent class
+data("state")
+data(us.cities)
+class<-data.frame(state.abb,state.region,state.name,state.division)
+colnames(class)<-c("Region","Class","Name","Division")
+class<-rbind(class, data.frame(Region=c("USA","DC"), Class=c("USA","DC"), Name = c("USA","DC"),Division=c("USA","DC")))
+```
+
+
+Use package lubridate to deal with Dates.I Switched Year and Quarter Into DATE. Then I average over 4 Quarters for each year and generate a parallel coordinate plot.
+```{r}
+#Get Mean Index for Each Year for all states (Average over 4 Quarters)
+#Swith Year and Quarter Into DATE
+allstate$Date<-paste(allstate$Year,'-0',allstate$Quarter*3-2,'-01',sep="")
+allstate$Date[seq(4,dim(allstate)[1],by=4)]<-paste(allstate$Year[seq(4,dim(allstate)[1],by=4)],'-',
+                                               allstate$Quarter[seq(4,dim(allstate)[1],by=4)]*3-2,'-01',sep="")
+allstate$Date<-as.Date(allstate$Date)#Use Lubridate
+allstate.merge<-merge(allstate,class,id="Region")
+df.states<-dcast(select(allstate,Region,Date,PurchaseOnlyIndex),
+       Region~Date,value.var="PurchaseOnlyIndex")
+newdf.states<-merge(df.states,class,id="Region")
+```
+
+
+Then make a parallel Coordinate Plot of Purchase Only Index for Each State In Each Year, grouped by US divisions and regional classes. We can observe that HPI rises slowly from 1991-2000, and then exponentially since 2000 and reaches peak in 2008. After this year, HPI drastically fell down and is fairly low in 2011-2012. However, we can also notice that the past 2013, it seems that the house maket is thriving and perhaps it is turning over.The plot also shows that DC has not been affected by economy crisis significantly during 2007-2008. The HPI is alway higherest among all other areas since 2005.
+
+```{r fig.weight=8,fig.height=6, fig.align='center'}
+df.states2<-dcast(select(allstate,Region,Year,Quarter,PurchaseOnlyIndex),
+           Region~Year,mean,value.var="PurchaseOnlyIndex")
+df.states2<-merge(df.states2,class,id="Region")
+
+#Sum of Each Year-Division
+ggparcoord(df.states2, columns = c(2:(length(df.states2)-3)), groupColumn = 27, scale = "globalminmax",
+           missing = "exclude") + theme(legend.position = "right", text=element_text(size=14),legend.text = element_text(size =10),axis.text.x = element_text(size=8,angle=-45, vjust=1))+xlab("Year")+ylab("House Price Index(1991=100)")+ggtitle("Mean HPI for each year by US Division")
+```
+
+
+To divided the US states into 5 regions, we can easily find that on the whole west part has higer HPI index than other areas.
+```{r fig.weight=12,fig.height=6, fig.align='center'}
+#Sum of Each Year-5Region
+ggparcoord(df.states2, columns = c(2:(length(df.states2)-3)), groupColumn = 25, scale = "globalminmax",
+           missing = "exclude") + theme(legend.position = "right", text=element_text(size=14),legend.text = element_text(size =10),axis.text.x = element_text(size=8,angle=-45, vjust=1))+xlab("Year")+ylab("House Price Index(1991=100)")+ggtitle("Mean HPI for each year by US Regional Class")
+```
+
+
+Also make a parallel coordinate plot for all four quarters in the period of 1991-2013 by Division.Different quarters does not make much difference within a year and the result can also be presented by mean HPI of year.
+```{r fig.weight=12,fig.height=6, fig.align='center'}
+#A plot of All Years #Use lubridate Date
+ggplot(allstate.merge,aes(Date,PurchaseOnlyIndex,group=Region))+geom_line(aes(color=Division))+
+   scale_x_date(breaks = date_breaks("18 month"), labels = date_format("%y-%m"))+
+  theme(legend.position = "right", text=element_text(size=14),legend.text = element_text(size =10),axis.text.x = element_text(size=10,angle=-60, vjust=1))+xlab("Year")+ylab("House Price Index(1991=100)")+
+  ggtitle("All Years and Quarters")
+```
+
+
+I next analyzed percentage change of Purchase Only Index over Previous Quarter, Previous year, 5 years ,and Since the first quarter of 1991 and Sort the result. Here we also Include DC and USA results. Period ended is 2013-Q4.
+
+```{r}
+##Analyze On Purchase Only Index values
+trim <- function (x) gsub("^\\s+|\\s+$", "", x) #returns string w/o leading or trailing whitespace
+us$Region<-as.factor(trim(as.character(us$Region)))
+combPOI<-rbind(select(us,Region,Year,Quarter,PurchaseOnlyIndex),
+            select(allstate,Region,Year,Quarter,PurchaseOnlyIndex))
+
+combPOI.expand<-merge(combPOI,class,id="Region")
+comb.state<-dcast(combPOI.expand,Region~Year+Quarter,mean,value.var="PurchaseOnlyIndex")
+#Use Mean of several states to indicate a Division
+comb.division<-dcast(combPOI.expand,Division~Year+Quarter,mean,value.var="PurchaseOnlyIndex") 
+
+#Define a Function to get HPI changes 
+hpiChange<-function(data){
+  mutdata<-mutate(data,
+                  OneQtr=100*(data[,length(data)]-data[,length(data)-1])/data[,length(data)-1],
+                OneYr=100*(data[,length(data)]-data[,length(data)-4*1])/data[,length(data)-4*1],
+                FiveYr=100*(data[,length(data)]-data[,length(data)-4*5])/data[,length(data)-4*5],allYr=100*(data[,length(data)]-data[,2])/data[,2])
+  return(mutdata)
+}
+
+#HPI Change in Division
+mutcomb.division<-hpiChange(comb.division)
+mutcomb.division<-mutcomb.division[,c(1,(length(comb.division)+1):length(mutcomb.division))]
+```
+
+We can therefore sort the Division Result by, say : One Year
+```{r}
+#mutcomb.sort<-arrange(mutcomb.division,desc(OneYr),desc(OneQtr),desc(FiveYr),desc(allYr))
+mutcomb.sort<-arrange(mutcomb.division,desc(OneYr))
+head(mutcomb.sort,10)
+top<-mutcomb.sort$Division[1]
+second<-mutcomb.sort$Division[2]
+third<-mutcomb.sort$Division[3]
+```
+
+Print out the states in top three divisions. The third division is USA.
+```{r}
+print(newdf.states$Name[newdf.states$Division==as.character(top)], max.levels=0)
+print(newdf.states$Name[newdf.states$Division==as.character(second)],max.levels=0)
+print(newdf.states$Name[newdf.states$Division==as.character(third)],max.levels=0)
+```
+
+#Take a look at HPI percentage changes for all divisions in the given time span: change to previous quarter, to previous year, past five years and all years over since 1991-Q1.
+```{r fig.width=10,fig.height=6,fig.align='center'}
+ggparcoord(mutcomb.division, columns = c(2:length(mutcomb.division)), groupColumn = 1, scale = "globalminmax",
+           missing = "exclude") + theme(legend.position = "right", legend.text = element_text(size=10))+xlab("Period")+ylab("Percentage")+
+ theme(text = element_text(size=16),legend.text=element_text(size=12),
+        axis.text.x = element_text(size=12,angle=-45,vjust=0.5)) 
+```
+
+The result shows that for the past quarter, from 2013-Q3 to 2013-Q4, HPI decrease of DC is significant while HPI of mountain and pacific area has increased most. While in a Five-Year range or all year range, DC stands out to have a high value of HPI. In Five-Year range, most part of US has low HPI percentage change (or increase) since the country has been just recovered from a crisis happened 6 years ago and HPI was coming back slowly. It seems that housing in mountain and pacific areas has been recovering most in recent years.
+
+```{r fig.width=7,fig.height=6,fig.align='center'}
+mutcomb.division.melt<-melt(mutcomb.division,id="Division")
+ggplot(mutcomb.division.melt,aes(x=Division,y=value,group=variable))+geom_bar(stat="identity",aes(fill=Division))+facet_wrap(~variable,scales="free_y")+ylab("Percent Change to 2013-Q4 (%)")+
+  theme(legend.position="None",text = element_text(size=16),
+        axis.text.x = element_text(size=12,angle=-90, vjust=0),axis.title.x=element_blank()) 
+```
+
+
+First,we make a plot of HPI value for lastest year and quarter on US Map, which is 2013-Q4. On the plot, we use midpoint value as of HPI index of USA.
+```{r}
+mapdf <- map_data("state")
+combPOI.expand$Name<-as.factor(tolower(as.character(combPOI.expand$Name)))
+mapdf$region<-as.factor(mapdf$region)
+#Get Latest Year Subset dataset changes Only
+subset<-select(filter(combPOI.expand,Year==2013 & Quarter==4),Name,PurchaseOnlyIndex)
+colnames(subset)<-c("region","value")
+midvalue=filter(subset,region=="usa")$value  #USE USA value as midvalue
+mapdf2<-merge(subset,mapdf,by="region")
+```
+Map the HPI index value onto US map
+```{r fig.width=8,fig.height=6,fig.align='center'}
+ggplot(mapdf2) + 
+  geom_polygon(aes(x=long, y=lat,group = group,order=order,fill=value))+
+  scale_fill_gradient2("Purchase Only Index",low ="blue", mid = "#FFFFFF", high ="red", 
+                       midpoint = midvalue, space = "rgb", guide = "colourbar")+theme_bw(base_size=18)+theme(legend.position="bottom",legend.text=element_text(size=12),                                                                                                             axis.title.x=element_blank(),axis.title.y=element_blank())+ggtitle("House Price Index in 2013-Q4")
+```
+
+
+Then analyze HPI changes for each state in US over the years and then project the result on US map.
+```{r}
+mutcomb.state<-hpiChange(comb.state)
+mutcomb.state<-mutcomb.state[,c(1,(length(comb.state)+1):length(mutcomb.state))]
+```
+
+Map the HPI change on the US map
+```{r}
+mapdf <- map_data("state")
+mutcomb.state.merge<-merge(mutcomb.state,class,by="Region")
+mutcomb.state.merge$Name<-as.factor(tolower(as.character(mutcomb.state.merge$Name)))
+mapdf$region<-as.factor(mapdf$region)
+#Get Latest Year Change Percentage
+subset<-select(mutcomb.state.merge,Name,OneQtr)  #OneQtr
+colnames(subset)<-c("region","value")
+midvalue=filter(subset,region=="usa")$value  #USE USA value as midvalue
+mapdf2<-merge(subset,mapdf,by="region")
+```
+
+```{r fig.width=8,fig.height=6,fig.align='center'}
+ggplot(mapdf2) + 
+  geom_polygon(aes(x=long, y=lat,group = group,order=order,fill=value))+
+  scale_fill_gradient2("Percentage(%)",low ="blue", mid = "#FFFFFF", high ="red", 
+                       midpoint = midvalue, space = "rgb", guide = "colourbar")+theme_bw(base_size=18)+theme(legend.position="bottom",axis.title.x=element_blank(),axis.title.y=element_blank())+
+  ggtitle("Percent Change of HPI over One Quarter")
+```
+
+Sort the State Result by, say One Year
+```{r}
+#mutcomb.sort<-arrange(mutcomb.state.merge,desc(OneYr),desc(OneQtr),desc(FiveYr),desc(allYr))
+mutcomb.sort<-arrange(mutcomb.state.merge,desc(OneYr))
+head(mutcomb.sort,10)
+top<-mutcomb.sort$Region[1]
+second<-mutcomb.sort$Region[2]
+third<-mutcomb.sort$Region[3]
+```
+
+Print out the top Cities that has large HPI change during the past Year
+```{r}
+print(newdf.states$Name[newdf.states$Region==as.character(top)],max.levels=0)
+print(newdf.states$Name[newdf.states$Region==as.character(second)],max.levels=0)
+print(newdf.states$Name[newdf.states$Region==as.character(third)],max.levels=0)
+```
+
+<br>
+
+Our next stage is to process Metropolitan Data and then plot HPI changes on the US map. The goal is to correlate the point size with per Capita Personal Income for these cities.
+```{r}
+#Data1-US Cities:
+data(us.cities)
+akhi <- which (us.cities$country.etc=="AK"| us.cities$country.etc=="HI" |
+                 us.cities$country.etc=="ma")
+us.cities <- us.cities[-akhi,]
+us.cities$country.etc <- factor(us.cities$country.etc)
+n <- nchar(us.cities$name)
+us.cities$name <- substr(us.cities$name, 1, n-3) #Extract City Names
+addDC<-data.frame(us.cities[us.cities$name=="Arlington" & us.cities$country.etc=="VA",])  
+addDC[,1:2]<-c("DC","DC")#ABOVE ALL: Use arlington,VA as DC value
+us.cities<-rbind(us.cities,addDC)
+
+#Data2-Income.Metro:
+income<-read.csv("data/metroIncome.csv")
+income<-income[,-1]
+colnames(income)[3:7]<-c("income1","income2","income3","income4","income5")
+head(income)
+```
+
+
+Read in metro data and combine with income data
+```{r}
+#colnames(metro)<-c("name","year","quarter","HPI")
+#metrosubset<-filter(metro,year %in% c(2006,2007,2008,2009,2010,2011,2012), quarter==4)
+#head(metrosubset)
+#tmp<-dcast(metrosubset,name~year+quarter,value.var="HPI")
+#head(tmp)
+#write.csv(tmp,"tmp.csv")
+#Read cleaned metro (regular expression shell command to clean data outside R)
+metro<-read.csv("data//HPI-25metro-clean.csv",header=TRUE)
+colnames(metro)[3:8]<-c("seven","eight","nine","ten","eleven","twelve")
+metrohpi<-mutate(metro,"hpi1"=100*(eight-seven)/seven,"hpi2"=100*(nine-eight)/eight,
+                     "hpi3"=100*(ten-nine)/nine,"hpi4"=100*(eleven-ten)/ten,"hpi5"=100*(twelve-eleven)/eleven)
+metrohpi<-metrohpi[,-c(3:8)]
+#Combine HPI and Income
+income.hpi<-cbind(income, metrohpi[,-c(1:2)])
+income.hpi.map<-merge(income.hpi,us.cities,id=c("name","country.etc"))
+head(income.hpi.map)
+```
+
+
+The plot of percent change of HPI and Income on US map shows that personal income increases most in west coast while the HPI increases most in Baltimore, around DC area.
+```{r fig.width=14,fig.height=10,fig.align='center'}
+mapdf <- map_data("state")
+map<-ggplot(mapdf)+geom_polygon(aes(x=long, y=lat,group = group,order=order),fill=I("grey85"),
+                                color=I("white"),size=0.5)+theme_bw()
+
+labeldata<- data.frame(x2=income.hpi.map$long, y2=income.hpi.map$lat,y3=income.hpi.map$income5,
+                          texthere=income.hpi.map$name)
+
+map+geom_point(data=income.hpi.map,mapping=aes(x=long, y=lat,color=hpi5,size=income5),alpha=I(0.7))+
+scale_colour_gradient("HPI change",low=("blue"),high=("red"))+  
+ #scale_colour_brewer(palette="Spectral", type="qual",name="2002 Autism\nPrevalence Octile")
+  scale_size_continuous("Income Change",range=c(4,20))+
+ theme_bw(base_size=18)+
+  theme(legend.position="bottom",axis.title.x=element_blank(),axis.title.y=element_blank())+
+annotate("text",x=labeldata$x2+3,y=labeldata$y2,label=as.character(labeldata$texthere),
+         size=2*labeldata$y3,
+         alpha=I(0.6))+ggtitle("Percent Change of HPI and Income in major US cities during 2011-2012")
+```
+
+Things to do next:
+(1)Develop Easy Shiny App. Still working on it. Almost Done!
+(2)Finally, wrap up all the results and clean the code.
+

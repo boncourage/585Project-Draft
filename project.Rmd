@@ -6,7 +6,7 @@ STAT585X Project : HPI in US states and Major Cities
 It is well noted that the US economy has been thriving these years since Financial Crisis in 2007-2008. From the time we have arrived at Ames, Iowa, the rental prices in housing have been soaring without cease while at the same time I found that our salaries were also raised. This makes me curious of how housing prices in each US state as well as US major cities change during these years and is there any difference for west coast, east coast and mid west? In my Project, I collect data such as House Price Index, US largest 25 cities, Per Capita Personal Income and Gross State Product data from different sources, clean and process data for further analysis and meanwhile develop a shiny app for visualization.
 
 ```{r}
-setwd("E:/RdefaultWorkSpace/STAT585X-FinalProject")
+#setwd("E:/RdefaultWorkSpace/STAT585X-FinalProject")
 options(warn=-1)
 library(ggplot2)
 library(reshape2)
@@ -22,9 +22,9 @@ require(lubridate)
 ```{r}
 #Import Two Datasets: US HPI and State HPI
 #Use Seasonally-Adjusted Purchase-Only Index for USA
-us<-read.csv("data/USAHPI.csv")
+us<-read.csv("USAHPI.csv")
 colnames(us)[4:6]<-c("PurchaseOnlyIndex","change-Prev4Qt","change-PrevQtr")
-allstate<-read.csv("data/stateHPI.csv")
+allstate<-read.csv("stateHPI.csv")
 colnames(allstate)[c(1:4)]<-c("Region","Year","Quarter","PurchaseOnlyIndex")
 print(paste("Unique Regions in the state Dataset:",length(unique(allstate$Region)),"states"))
 ```
@@ -238,7 +238,7 @@ addDC[,1:2]<-c("DC","DC")#ABOVE ALL: Use arlington,VA as DC value
 us.cities<-rbind(us.cities,addDC)
 
 #Data2-Income.Metro:
-income<-read.csv("data/metroIncome.csv")
+income<-read.csv("metroIncome.csv")
 income<-income[,-1]
 colnames(income)[3:7]<-c("income1","income2","income3","income4","income5")
 head(income)
@@ -254,7 +254,7 @@ Read in metro data and combine with income data
 #head(tmp)
 #write.csv(tmp,"tmp.csv")
 #Read cleaned metro (regular expression shell command to clean data outside R)
-metro<-read.csv("data//HPI-25metro-clean.csv",header=TRUE)
+metro<-read.csv("HPI-25metro-clean.csv",header=TRUE)
 colnames(metro)[3:8]<-c("seven","eight","nine","ten","eleven","twelve")
 metrohpi<-mutate(metro,"hpi1"=100*(eight-seven)/seven,"hpi2"=100*(nine-eight)/eight,
                      "hpi3"=100*(ten-nine)/nine,"hpi4"=100*(eleven-ten)/ten,"hpi5"=100*(twelve-eleven)/eleven)
